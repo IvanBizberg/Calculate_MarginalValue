@@ -1,0 +1,367 @@
+---
+title: "MockParker1986Equation"
+author: "Ivan Bizberg"
+date: "11/16/2020"
+output: html_document
+bibliography: C:/Users/ivan/Dropbox/ZoteroMyLibrary.bib
+link-citations: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Equation from [@mock_advantages_1986]
+
+RVe = q * P; 
+
+RVi = (1 - q).Pi  
+
+q Proporción de nidadas en las que el hermano mayor no falleció antes que el hermano menor.  
+q Proporción de nidadas en las que el hermano menor falleció antes que el hermano mayor  
+
+P; es la fracción de q en la que sobrevive el más joven 
+
+Pi es la fracción de los más jóvenes que sobrevive en las otras 1 - q nidadas. 
+
+RVe: extra reproductive value 
+
+RVi: insurance reproductive value
+
+## Libraries
+```{r, include=FALSE}
+library(tidyverse)
+library(gt)
+```
+
+### Path
+```{r}
+path = "Ivan"
+setwd("C:/Users/ivan/Dropbox/PHD/Git/Calculate_RepValue/")
+```
+
+## Import data and functions 
+```{r}
+RAW_DATA = read.csv(str_glue("C:/Users/{path}/Dropbox/PHD/DATA/Csv/RawData4.5.csv"),sep =",",header = T)
+source("C:/Users/Ivan/Dropbox/PHD/Custom functions/Censoring.R")
+```
+
+
+
+# Brood of 2
+
+### Filter data
+
+```{r}
+Data <- RAW_DATA %>% 
+  filter(NIDADA == 2, PUESTA == 2, SEMANIPULO == "f") %>% Censoring(., 60) %>% 
+  filter(!(DESTHUEVO2 == "e" & ESTECLOS2 <= ESTECLOS1)) # Remove database errors 
+
+Sample_size_2 <- Data %>% count() %>% pull
+  
+Tab <- Data %>% mutate(q = case_when(!(FECHFINAL1 < FECHFINAL2 & MURIO1 == "t") ~ "A dind't died before B (q)")) %>% 
+  mutate(P = case_when(q == "A dind't died before B (q)" & MURIO2 == "f" ~ "Both survived")) %>% 
+  mutate(Pi = case_when(is.na(q) & MURIO2 == "f" ~ "B survived after A died")) %>% 
+  count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n)) 
+
+
+
+Tab %>% mutate(across(everything(), as.character)) %>% 
+  pivot_longer(-n) %>% stack() 
+
+
+
+```
+
+
+## Values
+
+```{r}
+Total <- Tab$Total[1]
+q <- Tab %>% filter(q == "A dind't died before B (q)") %>% pull(Sum_q) %>% .[1]
+P <- Tab %>% filter(q == "A dind't died before B (q)" & P == "Both survived") %>% pull(n)
+
+`Total-q` <- Total - q
+Pi <- Tab %>% filter(Pi == "B survived after A died") %>% pull(n)
+
+
+```
+
+
+
+## Mock equation
+
+```{r}
+RVe <- round(q/Total * P/q, digits = 3); RVe
+
+RVi <- round((1 - q/Total) * Pi/`Total-q`, digits = 3); RVi
+
+TotRV <- RVe + RVi
+```
+
+### Percentage
+```{r}
+`%RVe` <- RVe * 100 / TotRV; `%RVe`
+`%RVi` <- RVi * 100 / TotRV; `%RVi`
+```
+
+
+## Lameley equation
+Because we need to take in consideration random survival it could be interesting to calculate the real insurance value following lamey paper [@lamey_insurance_1996]
+
+where:
+B = brood size (2)
+t = number of days in the nestling cycle (60) 
+s = proportion of nest where all senior offspring survived 
+a = proportion of nest in which all young survived
+
+
+```{r}
+# Determinate B and t
+
+B = 2
+t = 60
+
+# Calculate s and a
+MiniMother <- DATA %>% filter(NIDADA == B, PUESTA == B, SEMANIPULO == "f") %>%
+  Censoring(., t)  
+df %>% count(Death602)
+
+# s
+dfS <- MiniMother %>% count(Death601) %>% drop_na() %>% janitor::adorn_totals()
+
+`s*` <- dfS %>% 
+  filter(Death601 == "0") %>% pull(n)
+sT <- dfS %>% 
+  filter(Death601 == "Total") %>% pull(n)
+
+s <- `s*`/sT
+
+# a
+dfA <- MiniMother %>% count(Death602) %>% drop_na() %>% janitor::adorn_totals()
+`a*` <- dfA %>% 
+  filter(Death602 == "0") %>% pull(n)
+aT <- dfA %>% 
+  filter(Death602 == "Total") %>% pull(n)
+
+a <- `a*`/aT
+
+
+# Calculate s and a for each day
+
+# s
+dfS <- MiniMother %>% count(Time601) %>% drop_na() %>%  filter(!Time601 < 0) %>% 
+  arrange(Time601) %>% 
+  mutate(nsum = (cumsum(n))) %>% 
+  mutate(Tot_nsum = 6092 - nsum) %>% 
+  # mutate(nsum = replace(nsum, is.na(nsum), 0)) %>% 
+  mutate(perc = n/(6092 - nsum)) %>% 
+  mutate(perc = 1 - perc) %>% 
+  janitor::adorn_totals()
+
+s <- dfS %>% slice(-61, -62) %>% pull(perc)
+
+# a
+dfA <- MiniMother %>% count(Time602) %>% drop_na() %>%  filter(!Time602 < 0) %>% 
+  arrange(Time602) %>% 
+  mutate(nsum = (cumsum(n))) %>% 
+  janitor::adorn_totals() %>% 
+  mutate(Tot_nsum = 6103 - nsum) %>% 
+  # mutate(nsum = replace(nsum, is.na(nsum), 0)) %>% 
+  mutate(perc = n/(6103 - nsum)) %>% 
+  mutate(perc = 1 - perc) 
+
+a <- dfS %>% slice(-61, -62) %>% pull(perc)
+```
+
+### Calculate i and d
+```{r}
+# at 60 days
+t <- 1:59
+i = 1 - (s^(1 / (t * (B - 1)))) 
+d = 1 - ( a^(1 / t) / (1 - i)^B ) 
+
+
+# at each day
+
+```
+
+
+
+### Calculate RVe, RVi and RVs
+```{r}
+RVe <- ((1 - i) * (1 - d))^t * ((1 - i)^(B - 1))^t 
+
+x <- 1:(t)
+
+RVi <- sum( ((1 - i) * (1 - d))^x * ((1 - i)^(B - 1))^(x - 1) * (1 - (1 - i)^(B - 1)) * (1 - i)^(t - x) )
+
+RVl <- sum( ((1 - i) * (1 - d))^x * ((1 - i)^(B - 1))^(x - 1) * (1 - (1 - i)^(B - 1)) * ((1 - i) * (1 - d))^(t - x) )
+
+
+RVs <- sum( ((1 - i) * (1 - d))^x * ((1 - i)^(B - 1))^(x - 1) * (1 - (1 - i)^(B - 1)) * ((1 - i)^(t - x) - ((1 - i) * (1 - d))^(t - x)) )
+
+RVi - RVl
+RVs + RVl
+```
+
+
+# Brood of 3
+
+### Filter data
+
+```{r}
+
+Data <- RAW_DATA %>% 
+  filter(NIDADA == 3, PUESTA == 3, SEMANIPULO == "f") %>% Censoring(., 60)
+
+Sample_size_3 <- Data %>% count() %>% pull
+  
+Tab <- Data %>% mutate(q = case_when(!((FECHFINAL1 < FECHFINAL3 & MURIO1 == "t") | (FECHFINAL2 < FECHFINAL3 & MURIO2 == "t")) ~ 
+                         "A and B dind't died before C (q)")) %>% 
+  mutate(P = case_when(q == "A and B dind't died before C (q)" & MURIO3 == "f" ~ "All survived")) %>% 
+  mutate(Pi = case_when(is.na(q) & MURIO3 == "f" ~ "C survived after A or B died")) %>% 
+  select(contains(c("FECHFINAL", "MURIO")), q, P, Pi) %>% 
+  count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n)) 
+
+Tab %>% mutate(across(everything(), as.character)) %>% 
+  pivot_longer(-n) %>% stack() 
+
+
+
+```
+
+
+## Values
+
+```{r}
+Total <- Tab$Total[1]
+q <- Tab %>% filter(q == "A and B dind't died before C (q)") %>% pull(Sum_q) %>% .[1]
+P <- Tab %>% filter(q == "A and B dind't died before C (q)" & P == "All survived") %>% pull(n)
+
+`Total-q` <- Total - q
+Pi <- Tab %>% filter(Pi == "C survived after A or B died") %>% pull(n)
+
+
+```
+
+
+
+## Mock equation
+
+```{r}
+RVe <- round(q/Total * P/q, digits = 3); RVe
+
+RVi <- round((1 - q/Total) * Pi/`Total-q`, digits = 3); RVi
+
+TotRV <- RVe + RVi
+```
+
+### Percentage
+```{r}
+`%RVe` <- RVe * 100 / TotRV; `%RVe`
+`%RVi` <- RVi * 100 / TotRV; `%RVi`
+```
+
+# FOR LOOP BROOD 2
+
+### Filter data
+
+```{r}
+Tab <- RAW_DATA %>% 
+  filter(NIDADA == 2, PUESTA == 2, SEMANIPULO == "f") %>% Censoring(., 60) %>% 
+   filter(!(DESTHUEVO2 == "e" & ESTECLOS2 <= ESTECLOS1)) %>% 
+  mutate(SSTYear = round(SSTYear, digits = 0))
+
+Values_RVe <- c()
+Values_RVi <- c()
+Age <- c()
+SST <- c()
+# Females
+for (i in 4:15){
+RV <- Tab %>%
+  filter(CONFIRMHEMB == "t") %>%
+  filter(AGEHEMB == i) %>%
+  mutate(q = case_when(!(FECHFINAL1 < FECHFINAL2 & MURIO1 == "t") ~ "A dind't died before B (q)")) %>%
+  mutate(P = case_when(q == "A dind't died before B (q)" & MURIO2 == "f" ~ "Both survived")) %>%
+  mutate(Pi = case_when(is.na(q) & MURIO2 == "f" ~ "B survived after A died")) %>%
+  count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
+
+# Males
+# for (i in 1:21){
+# RV <- Tab %>%
+#   filter(CONFIRMMACH == "t") %>%
+#   filter(AGEMACH == i) %>%
+#   mutate(q = case_when(!(FECHFINAL1 < FECHFINAL2 & MURIO1 == "t") ~ "A dind't died before B (q)")) %>%
+#   mutate(P = case_when(q == "A dind't died before B (q)" & MURIO2 == "f" ~ "Both survived")) %>%
+#   mutate(Pi = case_when(is.na(q) & MURIO2 == "f" ~ "B survived after A died")) %>%
+#   count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
+
+
+# SST
+# SST <- Tab$SSTYear %>% unique() %>% na.omit()
+# for (i in SST){
+# RV <- Tab %>%
+#   filter(SSTYear == i) %>%
+#   mutate(q = case_when(!(FECHFINAL1 < FECHFINAL2 & MURIO1 == "t") ~ "A dind't died before B (q)")) %>%
+#   mutate(P = case_when(q == "A dind't died before B (q)" & MURIO2 == "f" ~ "Both survived")) %>%
+#   mutate(Pi = case_when(is.na(q) & MURIO2 == "f" ~ "B survived after A died")) %>%
+#   count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
+
+## Values
+Total <- RV$Total[1]
+q <- RV %>% filter(q == "A dind't died before B (q)") %>% pull(Sum_q) %>% .[1]
+P <- RV %>% filter(q == "A dind't died before B (q)" & P == "Both survived") %>% pull(n)
+
+`Total-q` <- Total - q
+Pi <- RV %>% filter(Pi == "B survived after A died") %>% pull(n)
+
+
+## Mock equation
+RVe <- round(q/Total * P/q, digits = 3); RVe
+
+RVi <- round((1 - q/Total) * Pi/`Total-q`, digits = 3); RVi
+
+TotRV <- RVe + RVi
+
+
+### Percentage
+`%RVe` <- RVe * 100 / TotRV; `%RVe`
+`%RVi` <- RVi * 100 / TotRV; `%RVi`
+
+Values_RVe[i] <- `%RVe`
+Values_RVi[i] <- `%RVi`
+Age[i] <- i
+}
+```
+
+
+
+### Plot Age RV
+```{r}
+datAge <- data.frame(Age, Values_RVe, Values_RVi) %>% drop_na(); datAge
+```
+
+```{r}
+datAge %>% pivot_longer(-Age, names_to = "RV", values_to = "Values") %>% 
+  ggplot(aes(Age, Values, fill = RV)) + geom_col()
+```
+
+## Plot SST RV
+```{r}
+datSST <- data.frame(SST, Values_RVe, Values_RVi) %>% drop_na(); dat
+```
+```{r}
+datSST %>% pivot_longer(-SST, names_to = "RV", values_to = "Values") %>% 
+  ggplot(aes(SST, Values, fill = RV)) + geom_col()
+```
+
+
+# Sample size  
+```{r}
+Sample_size <- data.frame(Brood = c(2, 3),
+           N = c(Sample_size_2, Sample_size_3))
+
+write_csv(Sample_size, "Sample_size.csv")
+```
+
