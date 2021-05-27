@@ -43,7 +43,7 @@ library(asbio) # Confidence interval for the product of two proportions
 library(rsample)
 library(mosaic)
 
-path = "Ivan"
+path = "Conducta"
 
 source(str_glue("C:/Users/{path}/Dropbox/PHD/Custom functions/Censoring.R"))
 
@@ -67,7 +67,9 @@ Periode_SST <- RAW_DAT %>% select(NIDO, ESTECLOS1) %>%
 
 
 
-RAW_DATA <- RAW_DAT %>% left_join(., Periode_SST, by = "NIDO") %>% glimpse()
+RAW_DATA <- RAW_DAT %>% left_join(., Periode_SST, by = "NIDO") %>% 
+  mutate(Periode_roundPrRank = round(PROPORTIONALRANK, digits = 1)) %>% 
+  glimpse()
 ```
 
 
@@ -273,7 +275,7 @@ Data <- RAW_DATA %>%
 
 CIBootLoop <- data.frame()
 
-for (i in 1:1e2) {
+for (i in 1:1e3) {
   
   Datas <- resample(Data, replace = TRUE)
   
@@ -365,9 +367,10 @@ assign(str_glue("Plot_2_{X}"), Plot)
 ```{r}
 Tab <- RAW_DATA %>% 
   filter(NIDADA == 2, PUESTA == 2, SEMANIPULO == "f") %>% Censoring(., 60) %>% 
+  mutate(gr_PrRank = cut_number(Periode_roundPrRank, n = 3)) %>% 
   mutate(gr_SST = cut_number(Periode_roundSST, n = 3)) %>% 
-  mutate(gr_Fage = cut_number(AGEHEMB, n = 5)) %>% 
-  mutate(gr_Mage = cut_number(AGEMACH, n = 5)) %>% 
+  mutate(gr_Fage = cut_number(AGEHEMB, n = 6)) %>% 
+  mutate(gr_Mage = cut_number(AGEMACH, n = 6)) %>% 
   mutate(gr_Bond = if_else(CoupleExpLocal == 1, "First year", "Pair bond > 1")) %>% 
   rowwise() %>% 
   mutate(Diff_age = abs(AGEMACH - AGEHEMB)) %>% 
@@ -375,7 +378,7 @@ Tab <- RAW_DATA %>%
   mutate(gr_Dage = cut_number(Diff_age, n = 3))
   
 
-Tab %>% count(gr_Mage)  
+Tab %>% count(gr_PrRank)  
 
 LoopResult <- data.frame()
 
@@ -392,10 +395,20 @@ LoopResult <- data.frame()
 #     count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
 #-----------------------------------------------------------------------------------------------------------------------
 
-
-
+  
+### Prop Rank ###-----------------------------------------------------------------------------------------------------------------------
+X <- "Laying date"
+gr_PrRank <- Tab %>% arrange(gr_PrRank) %>% .$gr_PrRank %>% unique() %>% na.omit()
+for (i in gr_PrRank){
+  RV <- Tab %>%
+  filter(gr_PrRank == i) %>%
+  mutate(q = case_when(!(FECHFINAL1 < FECHFINAL2 & MURIO1 == "t") ~ "A dind't died before B (q)")) %>%
+  mutate(P = case_when(q == "A dind't died before B (q)" & MURIO2 == "f" ~ "Both survived")) %>%
+  mutate(Pi = case_when(is.na(q) & MURIO2 == "f" ~ "B survived after A died")) %>%
+  count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
+#-----------------------------------------------------------------------------------------------------------------------
+  
 ### Pair bond ###-----------------------------------------------------------------------------------------------------------------------
-
 # X <- "Pair bond duration"
 # gr_Bond <- Tab$gr_Bond %>% unique() %>% sort() %>% na.omit()
 # for (i in gr_Bond){
@@ -408,7 +421,6 @@ LoopResult <- data.frame()
 #-----------------------------------------------------------------------------------------------------------------------
 
 ### Females ###-----------------------------------------------------------------------------------------------------------------------
-# 
 # X <- "Female age"
 # gr_Age <- Tab %>% arrange(AGEHEMB) %>% .$gr_Fage %>% unique() %>% na.omit()
 # for (i in gr_Age){
@@ -424,21 +436,20 @@ LoopResult <- data.frame()
 
 ### Males ###-----------------------------------------------------------------------------------------------------------------------
 
-X <- "Male age"
-gr_Age <- Tab %>% arrange(AGEMACH) %>% .$gr_Mage %>% unique() %>% na.omit()
-for (i in gr_Age){
-RV <- Tab %>%
-  filter(CONFIRMMACH == "t") %>%
-  filter(gr_Mage == i) %>%
-  mutate(q = case_when(!(FECHFINAL1 < FECHFINAL2 & MURIO1 == "t") ~ "A dind't died before B (q)")) %>%
-  mutate(P = case_when(q == "A dind't died before B (q)" & MURIO2 == "f" ~ "Both survived")) %>%
-  mutate(Pi = case_when(is.na(q) & MURIO2 == "f" ~ "B survived after A died")) %>%
-  count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
+# X <- "Male age"
+# gr_Age <- Tab %>% arrange(AGEMACH) %>% .$gr_Mage %>% unique() %>% na.omit()
+# for (i in gr_Age){
+# RV <- Tab %>%
+#   filter(CONFIRMMACH == "t") %>%
+#   filter(gr_Mage == i) %>%
+#   mutate(q = case_when(!(FECHFINAL1 < FECHFINAL2 & MURIO1 == "t") ~ "A dind't died before B (q)")) %>%
+#   mutate(P = case_when(q == "A dind't died before B (q)" & MURIO2 == "f" ~ "Both survived")) %>%
+#   mutate(Pi = case_when(is.na(q) & MURIO2 == "f" ~ "B survived after A died")) %>%
+#   count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
 #-----------------------------------------------------------------------------------------------------------------------
 
 
 ### SST ###-----------------------------------------------------------------------------------------------------------------------
-# 
 # X <- "SST"
 # gr_SST <- Tab %>% arrange(gr_SST) %>% .$gr_SST %>% unique() %>% na.omit()
 # for (i in gr_SST){
@@ -504,7 +515,21 @@ CIBootLoop <- data.frame()
 #       count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
 #-----------------------------------------------------------------------------------------------------------------------
     
-    
+### Prop Rank ###-----------------------------------------------------------------------------------------------------------------------
+for (y in 1:1e3) {
+  Tabs <- resample(Tab, replace = TRUE)
+
+  LoopCIResult <- data.frame()
+  X <- "Laying date"
+  gr_PrRank <- Tab %>% arrange(gr_PrRank) %>% .$gr_PrRank %>% unique() %>% na.omit()
+  for (i in gr_PrRank){
+    RV <- Tabs %>%
+      filter(gr_PrRank == i) %>%
+      mutate(q = case_when(!(FECHFINAL1 < FECHFINAL2 & MURIO1 == "t") ~ "A dind't died before B (q)")) %>%
+      mutate(P = case_when(q == "A dind't died before B (q)" & MURIO2 == "f" ~ "Both survived")) %>%
+      mutate(Pi = case_when(is.na(q) & MURIO2 == "f" ~ "B survived after A died")) %>%
+      count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
+#-----------------------------------------------------------------------------------------------------------------------    
     
 ### Pair bond ###-----------------------------------------------------------------------------------------------------------------------
 # for (y in 1:1e3) {
@@ -541,20 +566,20 @@ CIBootLoop <- data.frame()
     
 
 ### Males ###-----------------------------------------------------------------------------------------------------------------------
-for (y in 1:1e3) {
-  Tabs <- resample(Tab, replace = TRUE)
-
-  LoopCIResult <- data.frame()
-  X <- "Male age"
-  gr_Age <- Tab %>% arrange(AGEMACH) %>% .$gr_Mage %>% unique() %>% na.omit()
-  for (i in gr_Age){
-    RV <- Tabs %>%
-      filter(CONFIRMMACH == "t") %>%
-      filter(gr_Mage == i) %>%
-      mutate(q = case_when(!(FECHFINAL1 < FECHFINAL2 & MURIO1 == "t") ~ "A dind't died before B (q)")) %>%
-      mutate(P = case_when(q == "A dind't died before B (q)" & MURIO2 == "f" ~ "Both survived")) %>%
-      mutate(Pi = case_when(is.na(q) & MURIO2 == "f" ~ "B survived after A died")) %>%
-      count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
+# for (y in 1:1e3) {
+#   Tabs <- resample(Tab, replace = TRUE)
+# 
+#   LoopCIResult <- data.frame()
+#   X <- "Male age"
+#   gr_Age <- Tab %>% arrange(AGEMACH) %>% .$gr_Mage %>% unique() %>% na.omit()
+#   for (i in gr_Age){
+#     RV <- Tabs %>%
+#       filter(CONFIRMMACH == "t") %>%
+#       filter(gr_Mage == i) %>%
+#       mutate(q = case_when(!(FECHFINAL1 < FECHFINAL2 & MURIO1 == "t") ~ "A dind't died before B (q)")) %>%
+#       mutate(P = case_when(q == "A dind't died before B (q)" & MURIO2 == "f" ~ "Both survived")) %>%
+#       mutate(Pi = case_when(is.na(q) & MURIO2 == "f" ~ "B survived after A died")) %>%
+#       count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
 #-----------------------------------------------------------------------------------------------------------------------
     
 
@@ -587,6 +612,8 @@ for (y in 1:1e3) {
     RVe <- round(q/Total * P/q, digits = 3); RVe
     
     RVi <- round((1 - q/Total) * Pi/`Total-q`, digits = 3); RVi
+    
+    if(length(RVi) == 0) next # Jump NA's
     
     TotRV <- RVe + RVi
     
@@ -658,9 +685,10 @@ Sample_size <- data.frame(Brood = c(2, 3),
 ```{r}
 Tab <- RAW_DATA %>% 
   filter(NIDADA == 3, PUESTA == 3, SEMANIPULO == "f") %>% Censoring(., 60) %>% 
+  mutate(gr_PrRank = cut_number(Periode_roundPrRank, n = 3)) %>% 
   mutate(gr_SST = cut_number(Periode_roundSST, n = 3)) %>% 
-  mutate(gr_Fage = cut_number(AGEHEMB, n = 5)) %>% 
-  mutate(gr_Mage = cut_number(AGEMACH, n = 5)) %>% 
+  mutate(gr_Fage = cut_number(AGEHEMB, n = 6)) %>% 
+  mutate(gr_Mage = cut_number(AGEMACH, n = 6)) %>% 
   mutate(gr_Bond = if_else(CoupleExpLocal == 1, "First year", "Pair bond > 1")) %>% 
   rowwise() %>% 
   mutate(Diff_age = abs(AGEMACH - AGEHEMB)) %>% 
@@ -672,7 +700,6 @@ Tab %>% count(gr_Mage)
 LoopResult <- data.frame()
 
 ### Age Difference ###-----------------------------------------------------------------------------------------------------------------------
-
 # X <- "Age Difference"
 # gr_Dage <- Tab$gr_Dage %>% unique() %>% sort() %>% na.omit()
 # for (i in gr_Dage){
@@ -687,6 +714,19 @@ LoopResult <- data.frame()
 #-----------------------------------------------------------------------------------------------------------------------
 
 
+### Prop Rank ###-----------------------------------------------------------------------------------------------------------------------
+X <- "Laying date"
+gr_PrRank <- Tab %>% arrange(gr_PrRank) %>% .$gr_PrRank %>% unique() %>% na.omit()
+for (i in gr_PrRank){
+  RV <- Tab %>%
+  filter(gr_PrRank == i) %>%
+    mutate(q = case_when(!((FECHFINAL1 < FECHFINAL3 & MURIO1 == "t") | (FECHFINAL2 < FECHFINAL3 & MURIO2 == "t")) ~
+                           "A and B dind't died before C (q)")) %>%
+    mutate(P = case_when(q == "A and B dind't died before C (q)" & MURIO3 == "f" ~ "All survived")) %>%
+    mutate(Pi = case_when(is.na(q) & MURIO3 == "f" ~ "C survived after A or B died")) %>%
+    select(contains(c("FECHFINAL", "MURIO")), q, P, Pi) %>%
+    count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
+#-----------------------------------------------------------------------------------------------------------------------
 
 ### Pair bond ###-----------------------------------------------------------------------------------------------------------------------
 
@@ -705,18 +745,18 @@ LoopResult <- data.frame()
 
 ### Females ###-----------------------------------------------------------------------------------------------------------------------
 
-X <- "Female age"
-gr_Age <- Tab %>% arrange(AGEHEMB) %>% .$gr_Fage %>% unique() %>% na.omit()
-for (i in gr_Age){
-RV <- Tab %>%
-  filter(CONFIRMHEMB == "t") %>%
-  filter(gr_Fage == i) %>%
-  mutate(q = case_when(!((FECHFINAL1 < FECHFINAL3 & MURIO1 == "t") | (FECHFINAL2 < FECHFINAL3 & MURIO2 == "t")) ~
-                         "A and B dind't died before C (q)")) %>%
-  mutate(P = case_when(q == "A and B dind't died before C (q)" & MURIO3 == "f" ~ "All survived")) %>%
-  mutate(Pi = case_when(is.na(q) & MURIO3 == "f" ~ "C survived after A or B died")) %>%
-  select(contains(c("FECHFINAL", "MURIO")), q, P, Pi) %>%
-  count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
+# X <- "Female age"
+# gr_Age <- Tab %>% arrange(AGEHEMB) %>% .$gr_Fage %>% unique() %>% na.omit()
+# for (i in gr_Age){
+# RV <- Tab %>%
+#   filter(CONFIRMHEMB == "t") %>%
+#   filter(gr_Fage == i) %>%
+#   mutate(q = case_when(!((FECHFINAL1 < FECHFINAL3 & MURIO1 == "t") | (FECHFINAL2 < FECHFINAL3 & MURIO2 == "t")) ~
+#                          "A and B dind't died before C (q)")) %>%
+#   mutate(P = case_when(q == "A and B dind't died before C (q)" & MURIO3 == "f" ~ "All survived")) %>%
+#   mutate(Pi = case_when(is.na(q) & MURIO3 == "f" ~ "C survived after A or B died")) %>%
+#   select(contains(c("FECHFINAL", "MURIO")), q, P, Pi) %>%
+#   count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
 #-----------------------------------------------------------------------------------------------------------------------
 
 
@@ -793,7 +833,7 @@ CIBootLoop <- data.frame()
 
 ### Age Difference ###-----------------------------------------------------------------------------------------------------------------------
 
-# for (y in 1:1e4) {
+# for (y in 1:1e3) {
 #   Tabs <- resample(Tab, replace = TRUE)
 # 
 #   LoopCIResult <- data.frame()
@@ -808,12 +848,29 @@ CIBootLoop <- data.frame()
 #     select(contains(c("FECHFINAL", "MURIO")), q, P, Pi) %>%
 #     count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
 #-----------------------------------------------------------------------------------------------------------------------
-    
+  
+### Prop Rank ###-----------------------------------------------------------------------------------------------------------------------
+for (y in 1:1e3) {
+  Tabs <- resample(Tab, replace = TRUE)
+
+  LoopCIResult <- data.frame()
+  X <- "Laying date"
+  gr_PrRank <- Tab %>% arrange(gr_PrRank) %>% .$gr_PrRank %>% unique() %>% na.omit()
+  for (i in gr_PrRank){
+    RV <- Tabs %>%
+      filter(gr_PrRank == i) %>%
+      mutate(q = case_when(!((FECHFINAL1 < FECHFINAL3 & MURIO1 == "t") | (FECHFINAL2 < FECHFINAL3 & MURIO2 == "t")) ~
+                             "A and B dind't died before C (q)")) %>%
+      mutate(P = case_when(q == "A and B dind't died before C (q)" & MURIO3 == "f" ~ "All survived")) %>%
+      mutate(Pi = case_when(is.na(q) & MURIO3 == "f" ~ "C survived after A or B died")) %>%
+      select(contains(c("FECHFINAL", "MURIO")), q, P, Pi) %>%
+      count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
+#-----------------------------------------------------------------------------------------------------------------------
     
     
 ### Pair bond ###-----------------------------------------------------------------------------------------------------------------------
 
-# for (y in 1:1e4) {
+# for (y in 1:1e3) {
 #   Tabs <- resample(Tab, replace = TRUE)
 # 
 #   LoopCIResult <- data.frame()
@@ -831,27 +888,27 @@ CIBootLoop <- data.frame()
 #-----------------------------------------------------------------------------------------------------------------------
 
 ### Females ###-----------------------------------------------------------------------------------------------------------------------
-for (y in 1:1e4) {
-  Tabs <- resample(Tab, replace = TRUE)
-
-  LoopCIResult <- data.frame()
-  X <- "Female age"
-  gr_Age <- Tab %>% arrange(AGEHEMB) %>% .$gr_Fage %>% unique() %>% na.omit()
-  for (i in gr_Age){
-    RV <- Tabs %>%
-      filter(CONFIRMHEMB == "t") %>%
-      filter(gr_Fage == i) %>%
-      mutate(q = case_when(!((FECHFINAL1 < FECHFINAL3 & MURIO1 == "t") | (FECHFINAL2 < FECHFINAL3 & MURIO2 == "t")) ~
-                             "A and B dind't died before C (q)")) %>%
-      mutate(P = case_when(q == "A and B dind't died before C (q)" & MURIO3 == "f" ~ "All survived")) %>%
-      mutate(Pi = case_when(is.na(q) & MURIO3 == "f" ~ "C survived after A or B died")) %>%
-      select(contains(c("FECHFINAL", "MURIO")), q, P, Pi) %>%
-      count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
+# for (y in 1:1e3) {
+#   Tabs <- resample(Tab, replace = TRUE)
+# 
+#   LoopCIResult <- data.frame()
+#   X <- "Female age"
+#   gr_Age <- Tab %>% arrange(AGEHEMB) %>% .$gr_Fage %>% unique() %>% na.omit()
+#   for (i in gr_Age){
+#     RV <- Tabs %>%
+#       filter(CONFIRMHEMB == "t") %>%
+#       filter(gr_Fage == i) %>%
+#       mutate(q = case_when(!((FECHFINAL1 < FECHFINAL3 & MURIO1 == "t") | (FECHFINAL2 < FECHFINAL3 & MURIO2 == "t")) ~
+#                              "A and B dind't died before C (q)")) %>%
+#       mutate(P = case_when(q == "A and B dind't died before C (q)" & MURIO3 == "f" ~ "All survived")) %>%
+#       mutate(Pi = case_when(is.na(q) & MURIO3 == "f" ~ "C survived after A or B died")) %>%
+#       select(contains(c("FECHFINAL", "MURIO")), q, P, Pi) %>%
+#       count(q, P, Pi) %>% as.data.frame() %>% mutate(Total = sum(n)) %>% group_by(q) %>% mutate(Sum_q = sum(n))
 #-----------------------------------------------------------------------------------------------------------------------
     
 
 ### Males ###-----------------------------------------------------------------------------------------------------------------------
-# for (y in 1:1e4) {
+# for (y in 1:1e3) {
 #   Tabs <- resample(Tab, replace = TRUE)
 # 
 #   LoopCIResult <- data.frame()
@@ -871,7 +928,7 @@ for (y in 1:1e4) {
     
 
 ### SST ###-----------------------------------------------------------------------------------------------------------------------
-# for (y in 1:1e4) {
+# for (y in 1:1e3) {
 #   Tabs <- resample(Tab, replace = TRUE)
 # 
 #   LoopCIResult <- data.frame()
@@ -901,6 +958,8 @@ for (y in 1:1e4) {
     RVe <- round(q/Total * P/q, digits = 3); RVe
     
     RVi <- round((1 - q/Total) * Pi/`Total-q`, digits = 3); RVi
+    
+    if(length(RVi) == 0) next # Jump NA's
     
     TotRV <- RVe + RVi
     
@@ -980,12 +1039,33 @@ ggarrange(`Plot_2_Female ages`,
   hjust = -1,
   vjust = 1
   ) %>%
-  ggexport(filename = "ReproductiveValueArrange_CI2.png", width = 1500, height = 1700)
+  ggexport(filename = "ReproductiveValueArrange_CI.png", width = 1500, height = 1700)
 
 ```
 
 
+# Arrange SUPP results 
 
+```{r}
+`Plot_2_Laying date` <- `Plot_2_Laying date` + ggtitle("RV of chick B from broods of two") + theme(plot.title = element_text(hjust = 0.5, size = 34),
+        plot.margin = unit(c(10, 5.5, 5.5, 5.5),"pt"))
+`Plot_3_Laying date` <- `Plot_3_Laying date` + ggtitle("RV of chick C from broods of three") + 
+  theme(plot.title = element_text(hjust = 0.5, size = 34),
+        plot.margin = unit(c(10, 5.5, 5.5, 5.5),"pt"))
+
+ggarrange(`Plot_2_Laying date`, 
+          `Plot_3_Laying date`, 
+          Plot_2_SST, 
+          Plot_3_SST,
+  common.legend = TRUE, legend = "bottom",
+  ncol = 2, nrow = 4,
+  labels = letters[seq(1, 8)],
+  font.label = list(size = 38, color = "black", face = "bold", family = NULL),
+  hjust = -1,
+  vjust = 1
+  ) %>%
+  ggexport(filename = "ReproductiveValueArrange_CISupp.png", width = 1500, height = 1700)
+```
 
 
 
@@ -1429,12 +1509,13 @@ a = proportion of nest in which all young survived
 ```{r eval=FALSE}
 # Determinate B and t
 
-B = 2
+B = 3
 t = 60
 
 # Calculate s and a
-MiniMother <- DATA %>% filter(NIDADA == B, PUESTA == B, SEMANIPULO == "f") %>%
+MiniMother <- RAW_DATA %>% filter(NIDADA == B, PUESTA == B, SEMANIPULO == "f") %>%
   Censoring(., t)  
+
 df %>% count(Death602)
 
 # s
@@ -1463,9 +1544,9 @@ a <- `a*`/aT
 dfS <- MiniMother %>% count(Time601) %>% drop_na() %>%  filter(!Time601 < 0) %>% 
   arrange(Time601) %>% 
   mutate(nsum = (cumsum(n))) %>% 
-  mutate(Tot_nsum = 6092 - nsum) %>% 
+  mutate(Tot_nsum = .[61, 3] - nsum) %>% 
   # mutate(nsum = replace(nsum, is.na(nsum), 0)) %>% 
-  mutate(perc = n/(6092 - nsum)) %>% 
+  mutate(perc = n/(.[61, 3] - nsum)) %>% 
   mutate(perc = 1 - perc) %>% 
   janitor::adorn_totals()
 
@@ -1476,9 +1557,9 @@ dfA <- MiniMother %>% count(Time602) %>% drop_na() %>%  filter(!Time602 < 0) %>%
   arrange(Time602) %>% 
   mutate(nsum = (cumsum(n))) %>% 
   janitor::adorn_totals() %>% 
-  mutate(Tot_nsum = 6103 - nsum) %>% 
+  mutate(Tot_nsum = .[62,2] - nsum) %>% 
   # mutate(nsum = replace(nsum, is.na(nsum), 0)) %>% 
-  mutate(perc = n/(6103 - nsum)) %>% 
+  mutate(perc = n/(.[62,2] - nsum)) %>% 
   mutate(perc = 1 - perc) 
 
 a <- dfS %>% slice(-61, -62) %>% pull(perc)
@@ -1504,9 +1585,9 @@ RVe <- ((1 - i) * (1 - d))^t * ((1 - i)^(B - 1))^t
 
 x <- 1:(t)
 
-RVi <- sum( ((1 - i) * (1 - d))^x * ((1 - i)^(B - 1))^(x - 1) * (1 - (1 - i)^(B - 1)) * (1 - i)^(t - x) )
+RVi <- sum( ((1 - i) * (1 - d))^x * ((1 - i)^(B - 1))^(x - 1) * (1 - (1 - i)^(B - 1)) * (1 - i)^(t - x), na.rm = T)
 
-RVl <- sum( ((1 - i) * (1 - d))^x * ((1 - i)^(B - 1))^(x - 1) * (1 - (1 - i)^(B - 1)) * ((1 - i) * (1 - d))^(t - x) )
+RVl <- sum( ((1 - i) * (1 - d))^x * ((1 - i)^(B - 1))^(x - 1) * (1 - (1 - i)^(B - 1)) * ((1 - i) * (1 - d))^(t - x), na.rm = T)
 
 
 RVs <- sum( ((1 - i) * (1 - d))^x * ((1 - i)^(B - 1))^(x - 1) * (1 - (1 - i)^(B - 1)) * ((1 - i)^(t - x) - ((1 - i) * (1 - d))^(t - x)) )
